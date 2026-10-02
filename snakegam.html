@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SNAKE — The Paper Serpent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,900;1,9..144,600;1,9..144,900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F2EDE2;
+    --paper-hi:#FAF6EB;
+    --ink:#181611;
+    --ink-60:rgba(24,22,17,.58);
+    --red:#D8432A;
+    --serif:'Fraunces',Georgia,serif;
+    --mono:'Space Mono',ui-monospace,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:var(--mono);-webkit-font-smoothing:antialiased;
+  }
+  /* print grain over everything */
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:60;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  ::selection{background:var(--red);color:var(--paper-hi)}
+  :focus-visible{outline:2px dashed var(--red);outline-offset:3px}
+
+  .page{min-height:100svh;display:flex;flex-direction:column;max-width:1240px;margin:0 auto;padding:0 clamp(16px,4vw,52px)}
+
+  /* ── masthead ── */
+  .masthead{display:flex;justify-content:space-between;gap:14px;padding:14px 0 12px;font-size:10.5px;letter-spacing:.16em;border-bottom:2px solid var(--ink)}
+  .masthead b{font-weight:700}
+  .masthead .mid{color:var(--ink-60)}
+
+  /* ── ink tape ── */
+  .tape{background:var(--ink);color:var(--paper-hi);overflow:hidden}
+  .tape-track{display:flex;width:max-content;animation:tape 30s linear infinite}
+  .tape-track span{white-space:nowrap;padding:7px 0;font-size:10.5px;letter-spacing:.22em}
+  @keyframes tape{to{transform:translateX(-50%)}}
+
+  /* ── headline ── */
+  .head-row{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:20px 0 16px;border-bottom:3px solid var(--ink)}
+  h1{font-family:var(--serif);font-weight:900;font-size:clamp(58px,10.5vw,136px);line-height:.82;letter-spacing:-.035em}
+  h1 .fn{color:var(--red);font-size:.42em;vertical-align:.6em}
+  .dek{font-size:11.5px;line-height:1.75;max-width:300px;border-left:2px solid var(--ink);padding-left:14px;padding-bottom:4px}
+  .dek em{font-family:var(--serif);font-style:italic;font-weight:600;color:var(--red);font-size:15px}
+
+  /* ── stage ── */
+  .stage{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:clamp(24px,4vw,56px);padding:26px 0 30px;flex:1;align-items:start}
+  .board-col{display:flex;justify-content:center}
+  .board-wrap{width:min(100%,560px);width:clamp(240px,min(100%,calc(100vh - 430px)),560px);width:clamp(240px,min(100%,calc(100svh - 430px)),560px)}
+
+  .plate-cap{display:flex;justify-content:space-between;font-size:9.5px;letter-spacing:.2em;color:var(--ink-60);padding-bottom:8px}
+  .plate-cap b{color:var(--red);font-weight:700}
+
+  .board-frame{
+    position:relative;aspect-ratio:1;width:100%;
+    background:var(--paper-hi);border:2.5px solid var(--ink);
+    box-shadow:9px 9px 0 var(--ink);
+    touch-action:none;user-select:none;-webkit-user-select:none;
+  }
+  .board-frame.shake{animation:shake .5s cubic-bezier(.36,.07,.19,.97)}
+  @keyframes shake{
+    10%,90%{transform:translate(-2px,1px)} 20%,80%{transform:translate(4px,-2px)}
+    30%,50%,70%{transform:translate(-6px,3px)} 40%,60%{transform:translate(6px,-3px)}
+  }
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  /* ── overlays ── */
+  .overlay{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
+    background:rgba(242,237,226,.45);opacity:0;visibility:hidden;pointer-events:none;
+    transition:opacity .25s,visibility .25s}
+  .overlay.show{opacity:1;visibility:visible;pointer-events:auto}
+  .card{background:var(--paper-hi);border:2px solid var(--ink);box-shadow:7px 7px 0 var(--ink);
+    padding:26px 30px 24px;max-width:84%;text-align:center;
+    display:flex;flex-direction:column;align-items:center;gap:10px;transform:rotate(-1.4deg)}
+  .overlay.show .card{animation:cardIn .35s cubic-bezier(.2,1.4,.4,1) both}
+  @keyframes cardIn{from{transform:rotate(-1.4deg) translateY(14px) scale(.95);opacity:0}to{transform:rotate(-1.4deg) translateY(0) scale(1);opacity:1}}
+  .kicker{font-size:9.5px;letter-spacing:.24em;color:var(--red);font-weight:700;animation:blink 1.6s steps(2) infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .card h2{font-family:var(--serif);font-style:italic;font-weight:900;font-size:clamp(30px,6vw,44px);line-height:1;letter-spacing:-.02em}
+  .card p{font-size:11px;letter-spacing:.05em;color:var(--ink-60);line-height:1.7}
+  .card p b{color:var(--ink)}
+  .stamp{display:inline-block;font-weight:700;font-size:13px;letter-spacing:.2em;color:var(--red);
+    border:2.5px solid var(--red);border-radius:3px;padding:6px 12px;transform:rotate(-8deg);
+    mix-blend-mode:multiply;animation:stampIn .35s cubic-bezier(.2,2,.4,1) both .25s}
+  @keyframes stampIn{from{transform:rotate(-8deg) scale(2.1);opacity:0}to{transform:rotate(-8deg) scale(1);opacity:.92}}
+
+  .btn{font-family:var(--mono);font-weight:700;font-size:11px;letter-spacing:.14em;
+    background:var(--ink);color:var(--paper-hi);border:2px solid var(--ink);
+    padding:12px 20px;cursor:pointer;box-shadow:4px 4px 0 var(--red);
+    transition:transform .12s,box-shadow .12s;margin-top:4px}
+  .btn:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--red)}
+  .btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--red)}
+
+  /* ── legend ── */
+  .legend{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;justify-content:center;
+    margin-top:14px;font-size:10px;letter-spacing:.18em;color:var(--ink-60)}
+  .lg{display:flex;align-items:center;gap:6px}
+  kbd{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink);
+    background:var(--paper-hi);border:1.5px solid var(--ink);border-bottom-width:3px;
+    border-radius:5px;padding:2px 7px 1px;letter-spacing:0}
+
+  /* ── stats ── */
+  .stats{display:flex;flex-direction:column;padding-top:2px}
+  .score-block{border-bottom:3px solid var(--ink);padding-bottom:14px}
+  .label{display:block;font-size:10px;letter-spacing:.26em;color:var(--ink-60);font-weight:700;margin-bottom:8px}
+  .score-num{font-family:var(--serif);font-weight:900;font-size:clamp(56px,6.5vw,82px);line-height:.9;letter-spacing:-.02em}
+  .score-num.pop{animation:pop .32s cubic-bezier(.2,2,.4,1)}
+  @keyframes pop{35%{transform:scale(1.12);color:var(--red)}}
+  .row{display:flex;justify-content:space-between;align-items:baseline;padding:11px 2px;border-bottom:1.5px solid var(--ink)}
+  .row .k{font-size:10px;letter-spacing:.22em;color:var(--ink-60);font-weight:700}
+  .row .v{font-weight:700;font-size:15px}
+  .sound{display:flex;align-items:center;justify-content:space-between;width:100%;
+    padding:12px 2px;border:0;border-bottom:1.5px solid var(--ink);
+    background:none;font-family:var(--mono);font-size:10px;letter-spacing:.22em;font-weight:700;
+    color:var(--ink);cursor:pointer}
+  .sound:hover{color:var(--red)}
+  .sound .ic{display:flex}
+  .footnote{margin-top:22px;font-size:10px;line-height:1.8;letter-spacing:.04em;color:var(--ink-60)}
+  .footnote b{color:var(--red)}
+
+  footer{border-top:2px solid var(--ink);padding:12px 0 16px;display:flex;justify-content:space-between;
+    flex-wrap:wrap;gap:6px;font-size:9.5px;letter-spacing:.18em;color:var(--ink-60)}
+
+  @media(max-width:920px){
+    .stage{grid-template-columns:1fr;gap:24px}
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:0 28px;align-items:start}
+    .footnote{grid-column:1/-1}
+  }
+  @media(max-width:640px){
+    .head-row{flex-direction:column;align-items:flex-start;gap:12px}
+    .dek{border-left:0;padding-left:0;border-top:2px solid var(--ink);padding-top:10px;max-width:none}
+    .masthead .mid{display:none}
+  }
+  @media(prefers-reduced-motion:reduce){
+    .tape-track,.kicker,.board-frame.shake{animation:none}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <b>THE PAPER SERPENT</b>
+    <span class="mid">AN INTERACTIVE SPECIMEN, SET IN INK</span>
+    <span>Nº 001 — PLAY EDITION</span>
+  </header>
+
+  <div class="tape" aria-hidden="true">
+    <div class="tape-track">
+      <span>EAT THE APPLE&nbsp;&nbsp;·&nbsp;&nbsp;DODGE THE WALLS&nbsp;&nbsp;·&nbsp;&nbsp;NEVER BITE YOURSELF&nbsp;&nbsp;·&nbsp;&nbsp;GROW LONG, LIVE FAST&nbsp;&nbsp;·&nbsp;&nbsp;EAT THE APPLE&nbsp;&nbsp;·&nbsp;&nbsp;DODGE THE WALLS&nbsp;&nbsp;·&nbsp;&nbsp;NEVER BITE YOURSELF&nbsp;&nbsp;·&nbsp;&nbsp;GROW LONG, LIVE FAST&nbsp;&nbsp;·&nbsp;&nbsp;</span>
+      <span>EAT THE APPLE&nbsp;&nbsp;·&nbsp;&nbsp;DODGE THE WALLS&nbsp;&nbsp;·&nbsp;&nbsp;NEVER BITE YOURSELF&nbsp;&nbsp;·&nbsp;&nbsp;GROW LONG, LIVE FAST&nbsp;&nbsp;·&nbsp;&nbsp;EAT THE APPLE&nbsp;&nbsp;·&nbsp;&nbsp;DODGE THE WALLS&nbsp;&nbsp;·&nbsp;&nbsp;NEVER BITE YOURSELF&nbsp;&nbsp;·&nbsp;&nbsp;GROW LONG, LIVE FAST&nbsp;&nbsp;·&nbsp;&nbsp;</span>
+    </div>
+  </div>
+
+  <div class="head-row">
+    <h1>SNAKE<span class="fn">*</span></h1>
+    <p class="dek">One serpent, one apple, twenty-one squares of graph paper. Steer, eat, grow — and above all, <em>don't bite yourself.</em></p>
+  </div>
+
+  <main class="stage">
+    <div class="board-col">
+      <div class="board-wrap">
+        <div class="plate-cap">
+          <span>FIG. 1 — THE FIELD, 21 × 21</span>
+          <b id="stateTag">DEMO</b>
+        </div>
+        <div class="board-frame" id="frame">
+          <canvas id="board"></canvas>
+
+          <div class="overlay show" id="ovMenu">
+            <div class="card">
+              <span class="kicker">DEMO REEL — THE SERPENT PLAYS ITSELF</span>
+              <h2>Your turn.</h2>
+              <p>steer with <b>arrows</b> / <b>WASD</b> — swipe on touch</p>
+              <button class="btn" id="btnStart" type="button">PRESS SPACE TO PLAY</button>
+            </div>
+          </div>
+
+          <div class="overlay" id="ovPause">
+            <div class="card">
+              <span class="kicker">INTERMISSION</span>
+              <h2>Paused.</h2>
+              <p>the apple waits for no one</p>
+              <button class="btn" id="btnResume" type="button">RESUME — SPACE</button>
+            </div>
+          </div>
+
+          <div class="overlay" id="ovOver">
+            <div class="card">
+              <span class="kicker">FINAL EDITION</span>
+              <h2 id="finalTitle">Game over.</h2>
+              <p>SCORE <b id="finalScore">0000</b> &nbsp;·&nbsp; BEST <b id="finalBest">0000</b></p>
+              <span class="stamp" id="stamp" style="display:none">NEW&nbsp;BEST!</span>
+              <button class="btn" id="btnAgain" type="button">PLAY AGAIN — SPACE</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="legend">
+          <span class="lg"><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> STEER</span>
+          <span class="lg"><kbd>SPACE</kbd> START / PAUSE</span>
+          <span class="lg">OR SWIPE ON TOUCH</span>
+        </div>
+      </div>
+    </div>
+
+    <aside class="stats">
+      <div class="score-block">
+        <span class="label">SCORE</span>
+        <div class="score-num" id="score">0000</div>
+      </div>
+      <div class="row"><span class="k">BEST</span><span class="v" id="best">0000</span></div>
+      <div class="row"><span class="k">LENGTH</span><span class="v" id="len">05</span></div>
+      <div class="row"><span class="k">SPEED</span><span class="v" id="spd">1.0×</span></div>
+      <button class="sound" id="btnSound" type="button" aria-pressed="true">
+        <span id="sndLbl">SOUND — ON</span>
+        <span class="ic">
+          <svg id="icOn" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>
+          <svg id="icOff" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="currentColor" stroke="none"/><path d="M22 9l-6 6M16 9l6 6"/></svg>
+        </span>
+      </button>
+      <p class="footnote"><b>*</b>&nbsp;First bitten into in 1976, on the <i>Blockade</i> arcade cabinet. Re-typeset here in ink on paper, at sixty frames a second. Handle with care — the margins bite back.</p>
+    </aside>
+  </main>
+
+  <footer>
+    <span>SET IN FRAUNCES &amp; SPACE MONO — REFRESH TO REPRINT</span>
+    <span>NO SERPENTS WERE HARMED</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  /* ───────── constants & helpers ───────── */
+  const COLS=21, ROWS=21;
+  const INK='#181611', PAPER='#FAF6EB', RED='#D8432A';
+  const BESTKEY='paper-serpent-best', SNDKEY='paper-serpent-snd';
+  const $=id=>document.getElementById(id);
+  const rand=n=>Math.floor(Math.random()*n);
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const pad=(n,w)=>String(n).padStart(w,'0');
+  const easeOutBack=u=>{const c=1.70158;return 1+(c+1)*Math.pow(u-1,3)+c*Math.pow(u-1,2)};
+
+  const frame=$('frame'), canvas=$('board'), ctx=canvas.getContext('2d');
+  const scoreEl=$('score'), bestEl=$('best'), lenEl=$('len'), spdEl=$('spd'), stateTag=$('stateTag');
+  const ovMenu=$('ovMenu'), ovPause=$('ovPause'), ovOver=$('ovOver');
+  const finalTitle=$('finalTitle'), finalScore=$('finalScore'), finalBest=$('finalBest'), stamp=$('stamp');
+
+  /* ───────── sizing (retina-aware) ───────── */
+  let W=0,H=0,cell=0;
+  function resize(){
+    const r=frame.getBoundingClientRect();
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=Math.round(r.width*dpr); canvas.height=Math.round(r.height*dpr);
+    W=r.width; H=r.height; cell=W/COLS;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  new ResizeObserver(resize).observe(frame); resize();
+
+  /* ───────── game state ───────── */
+  let state='menu';                 // menu | playing | paused | dying | gameover
+  let snake=[], prevSnake=[], dir={x:1,y:0}, dirQueue=[];
+  let apple={x:0,y:0}, appleAt=0;
+  let score=0, best=parseInt(localStorage.getItem(BESTKEY)||'0',10)||0;
+  let interval=150, acc=0, deathAt=0;
+  let particles=[], rings=[], floats=[];
+
+  function resetSnake(){
+    snake=[]; const cy=Math.floor(ROWS/2);
+    for(let i=0;i<5;i++) snake.push({x:8-i,y:cy});
+    prevSnake=snake.map(c=>({...c}));
+    dir={x:1,y:0}; dirQueue=[];
+  }
+  function spawnApple(){
+    const free=[];
+    for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++)
+      if(!snake.some(s=>s.x===x&&s.y===y)) free.push({x,y});
+    if(!free.length){ scoreEl.textContent=pad(COLS*ROWS,4); finishGameOver('Perfection.'); return; }
+    apple=free[rand(free.length)]; appleAt=performance.now();
+  }
+  function showOv(el){ for(const o of[ovMenu,ovPause,ovOver]) o.classList.toggle('show',o===el); }
+  function popEl(el){ el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+  function shake(){ frame.classList.remove('shake'); void frame.offsetWidth; frame.classList.add('shake'); }
+  frame.addEventListener('animationend',()=>frame.classList.remove('shake'));
+
+  /* ───────── demo AI (the serpent plays itself) ───────── */
+  function demoDir(){
+    const h=snake[0];
+    const dirs=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+    const safe=dirs.filter(d=>{
+      if(d.x===-dir.x&&d.y===-dir.y) return false;
+      const n={x:h.x+d.x,y:h.y+d.y};
+      if(n.x<0||n.x>=COLS||n.y<0||n.y>=ROWS) return false;
+      return !snake.some((s,i)=>i<snake.length-1&&s.x===n.x&&s.y===n.y);
+    });
+    if(!safe.length) return dir;
+    safe.sort((a,b)=>
+      (Math.abs(h.x+a.x-apple.x)+Math.abs(h.y+a.y-apple.y))-
+      (Math.abs(h.x+b.x-apple.x)+Math.abs(h.y+b.y-apple.y)));
+    return Math.random()<0.9?safe[0]:safe[rand(safe.length)];
+  }
+  function demoCrash(){
+    const h=snake[0];
+    burst((clamp(h.x,0,COLS-1)+.5)*cell,(clamp(h.y,0,ROWS-1)+.5)*cell);
+    resetSnake(); spawnApple(); acc=0;
+  }
+
+  /* ───────── core tick ───────── */
+  function tick(){
+    if(state==='menu') dir=demoDir();
+    else while(dirQueue.length){
+      const d=dirQueue.shift();
+      if(!(d.x===-dir.x&&d.y===-dir.y)&&!(d.x===dir.x&&d.y===dir.y)){ dir=d; break; }
+    }
+    const h=snake[0], nh={x:h.x+dir.x,y:h.y+dir.y};
+    const eating=nh.x===apple.x&&nh.y===apple.y;
+    const hitWall=nh.x<0||nh.x>=COLS||nh.y<0||nh.y>=ROWS;
+    const body=eating?snake:snake.slice(0,-1);
+    const hitSelf=body.some(s=>s.x===nh.x&&s.y===nh.y);
+    prevSnake=snake.map(c=>({...c}));
+    if(hitWall||hitSelf){ state==='menu'?demoCrash():die(); return; }
+    snake.unshift(nh);
+    eating?onEat():snake.pop();
+  }
+
+  function onEat(){
+    const px=(apple.x+.5)*cell, py=(apple.y+.5)*cell;
+    burst(px,py);
+    rings.push({x:px,y:py,t0:performance.now()});
+    spawnApple();
+    if(state==='playing'){
+      score++;
+      interval=Math.max(70,150-score*4);
+      scoreEl.textContent=pad(score,4); popEl(scoreEl);
+      floats.push({x:px,y:py,t0:performance.now()});
+      sEat();
+    }
+    lenEl.textContent=pad(snake.length,2);
+    spdEl.textContent=(150/interval).toFixed(1)+'×';
+  }
+
+  function burst(x,y){
+    for(let i=0;i<10;i++){
+      const a=Math.random()*Math.PI*2, sp=40+Math.random()*130;
+      particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,
+        r:1.2+Math.random()*2.2,life:0,dur:.45+Math.random()*.25,
+        col:Math.random()<.6?RED:INK});
+    }
+  }
+
+  /* ───────── state transitions ───────── */
+  function startGame(){
+    state='playing'; score=0; interval=150; acc=0;
+    particles=[]; rings=[]; floats=[];
+    resetSnake(); spawnApple();
+    scoreEl.textContent='0000'; lenEl.textContent='05'; spdEl.textContent='1.0×';
+    stateTag.textContent='RUNNING';
+    showOv(null); sStart();
+  }
+  function pause(){ if(state!=='playing')return; state='paused'; stateTag.textContent='PAUSED'; showOv(ovPause); sBlip(); }
+  function resume(){ if(state!=='paused')return; state='playing'; stateTag.textContent='RUNNING'; showOv(null); sBlip(); }
+  function die(){ state='dying'; deathAt=performance.now(); acc=interval; stateTag.textContent='DECEASED'; sDie(); shake(); }
+  function finishGameOver(title){
+    state='gameover';
+    if(score>best&&score>0){
+      best=score; localStorage.setItem(BESTKEY,best);
+      bestEl.textContent=pad(best,4); popEl(bestEl);
+    }
+    finalTitle.textContent=title||'Game over.';
+    finalScore.textContent=pad(score,4); finalBest.textContent=pad(best,4);
+    stamp.style.display=(score>=best&&score>0)?'inline-block':'none';
+    showOv(ovOver);
+  }
+  function action(){
+    ensureAudio();
+    if(state==='playing') pause();
+    else if(state==='paused') resume();
+    else startGame();
+  }
+
+  /* ───────── audio (tiny WebAudio synth, no files) ───────── */
+  let actx=null, soundOn=localStorage.getItem(SNDKEY)!=='off';
+  function ensureAudio(){
+    if(!soundOn) return;
+    if(!actx){ try{ actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+    if(actx&&actx.state==='suspended') actx.resume();
+  }
+  function tone(f0,f1,dur,type,vol,delay){
+    if(!soundOn||!actx) return;
+    const t0=actx.currentTime+(delay||0);
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t0+dur);
+    g.gain.setValueAtTime(vol,t0);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(t0); o.stop(t0+dur+0.05);
+  }
+  const sEat  =()=>{tone(540,760,.09,'square',.10); tone(760,1150,.13,'square',.08,.06)};
+  const sDie  =()=>{tone(240,50,.55,'sawtooth',.16); tone(170,45,.5,'square',.10,.04)};
+  const sStart=()=>{tone(420,640,.08,'square',.07); tone(640,900,.11,'square',.07,.07)};
+  const sBlip =()=>tone(500,320,.11,'square',.06);
+
+  const btnSound=$('btnSound'), icOn=$('icOn'), icOff=$('icOff'), sndLbl=$('sndLbl');
+  function paintSound(){
+    icOn.style.display=soundOn?'block':'none';
+    icOff.style.display=soundOn?'none':'block';
+    sndLbl.textContent='SOUND — '+(soundOn?'ON':'OFF');
+    btnSound.setAttribute('aria-pressed',soundOn);
+  }
+  btnSound.addEventListener('click',()=>{
+    soundOn=!soundOn; localStorage.setItem(SNDKEY,soundOn?'on':'off');
+    if(soundOn) ensureAudio(); paintSound();
+  });
+  paintSound();
+
+  /* ───────── rendering ───────── */
+  function drawGrid(){
+    ctx.lineWidth=1;
+    for(let i=1;i<COLS;i++){
+      ctx.strokeStyle=i%7===0?'rgba(24,22,17,.14)':'rgba(24,22,17,.07)';
+      ctx.beginPath(); ctx.moveTo(i*cell,0); ctx.lineTo(i*cell,H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,i*cell); ctx.lineTo(W,i*cell); ctx.stroke();
+    }
+  }
+
+  function drawApple(now){
+    const cx=(apple.x+.5)*cell, cy=(apple.y+.5)*cell;
+    const pop=easeOutBack(clamp((now-appleAt)/380,0,1));
+    const s=pop*(1+Math.sin(now/260)*.05);
+    const r=cell*0.33*Math.max(s,0.01);
+    ctx.fillStyle=RED; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill();
+    ctx.strokeStyle=INK; ctx.lineWidth=Math.max(1.5,cell*0.07); ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(cx,cy-r*0.9);
+    ctx.quadraticCurveTo(cx+cell*0.02,cy-r-cell*0.10,cx+cell*0.10,cy-r-cell*0.16); ctx.stroke();
+    ctx.save();
+    ctx.translate(cx+cell*0.17,cy-r-cell*0.10); ctx.rotate(-0.6);
+    ctx.beginPath(); ctx.ellipse(0,0,cell*0.12,cell*0.055,0,0,7);
+    ctx.fillStyle=INK; ctx.fill(); ctx.restore();
+  }
+
+  function drawSnake(t,now){
+    const n=snake.length; if(n<2) return;
+    // interpolated cell centres (the slither)
+    const pts=new Array(n);
+    for(let i=0;i<n;i++){
+      const c=snake[i], p=prevSnake[i]||c;
+      pts[i]={x:(lerp(p.x,c.x,t)+.5)*cell, y:(lerp(p.y,c.y,t)+.5)*cell};
+    }
+    // Catmull-Rom dense path through the body
+    const dense=[];
+    for(let i=0;i<n-1;i++){
+      const p0=pts[Math.max(0,i-1)], p1=pts[i], p2=pts[i+1], p3=pts[Math.min(n-1,i+2)];
+      const steps=Math.max(2,Math.ceil(Math.hypot(p2.x-p1.x,p2.y-p1.y)/2.5));
+      for(let s=0;s<steps;s++){
+        const u=s/steps, u2=u*u, u3=u2*u;
+        dense.push({
+          x:.5*(2*p1.x+(-p0.x+p2.x)*u+(2*p0.x-5*p1.x+4*p2.x-p3.x)*u2+(-p0.x+3*p1.x-3*p2.x+p3.x)*u3),
+          y:.5*(2*p1.y+(-p0.y+p2.y)*u+(2*p0.y-5*p1.y+4*p2.y-p3.y)*u2+(-p0.y+3*p1.y-3*p2.y+p3.y)*u3)
+        });
+      }
+    }
+    dense.push(pts[n-1]);
+
+    const flash=state==='dying'&&Math.floor((now-deathAt)/130)%2===0;
+    const col=flash?RED:INK;
+
+    // tapered body: stamp circles, thick near the head, thin at the tail tip
+    const M=dense.length;
+    ctx.fillStyle=col;
+    for(let j=0;j<M;j++){
+      const u=j/(M-1);
+      let r=cell*0.34;
+      if(u>0.62){ const k=(u-0.62)/0.38; r=cell*(0.34-0.27*k*k); }
+      ctx.beginPath(); ctx.arc(dense[j].x,dense[j].y,r,0,7); ctx.fill();
+    }
+    // head
+    const hp=pts[0];
+    ctx.beginPath(); ctx.arc(hp.x,hp.y,cell*0.44,0,7); ctx.fill();
+
+    // heading
+    let dx=hp.x-pts[1].x, dy=hp.y-pts[1].y;
+    const L=Math.hypot(dx,dy)||1; dx/=L; dy/=L;
+
+    // flicking forked tongue
+    const cyc=now%1900;
+    if(cyc<320&&state!=='dying'){
+      const ext=Math.sin(cyc/320*Math.PI);
+      const bx=hp.x+dx*cell*0.40, by=hp.y+dy*cell*0.40;
+      const tx=bx+dx*cell*0.55*ext, ty=by+dy*cell*0.55*ext;
+      ctx.strokeStyle=RED; ctx.lineWidth=Math.max(1.4,cell*0.07); ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(bx,by); ctx.lineTo(tx,ty);
+      const fl=cell*0.18*ext;
+      for(const a of[-0.5,0.5]){
+        const ca=Math.cos(a), sa=Math.sin(a);
+        const fx=dx*ca-dy*sa, fy=dx*sa+dy*ca;
+        ctx.moveTo(tx,ty); ctx.lineTo(tx+fx*fl,ty+fy*fl);
+      }
+      ctx.stroke();
+    }
+    // eyes: paper sclera, pupils tracking the apple, periodic blink
+    const blink=(now%3600)>3420?0.12:1;
+    const pxv=-dy, pyv=dx;
+    const ax=(apple.x+.5)*cell, ay=(apple.y+.5)*cell;
+    for(const sgn of[-1,1]){
+      const ex=hp.x+dx*cell*0.10+pxv*cell*0.21*sgn;
+      const ey=hp.y+dy*cell*0.10+pyv*cell*0.21*sgn;
+      const er=cell*0.15;
+      ctx.fillStyle=PAPER;
+      ctx.beginPath(); ctx.ellipse(ex,ey,er,er*blink,0,0,7); ctx.fill();
+      if(blink>0.5){
+        let lx=ax-ex, ly=ay-ey; const ll=Math.hypot(lx,ly)||1; lx/=ll; ly/=ll;
+        ctx.fillStyle=INK;
+        ctx.beginPath(); ctx.arc(ex+lx*er*0.42,ey+ly*er*0.42,er*0.46,0,7); ctx.fill();
+      }
+    }
+  }
+
+  function render(t,now){
+    ctx.clearRect(0,0,W,H);
+    drawGrid();
+    for(const r of rings){
+      const u=(now-r.t0)/450; if(u>=1) continue;
+      ctx.globalAlpha=1-u; ctx.strokeStyle=RED; ctx.lineWidth=2.5*(1-u)+0.5;
+      ctx.beginPath(); ctx.arc(r.x,r.y,cell*(0.4+u*1.5),0,7); ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+    drawApple(now);
+    drawSnake(t,now);
+    for(const p of particles){
+      ctx.globalAlpha=1-p.life/p.dur; ctx.fillStyle=p.col;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    ctx.textAlign='center';
+    ctx.font='700 '+Math.round(cell*0.6)+'px "Space Mono",monospace';
+    ctx.fillStyle=RED;
+    for(const f of floats){
+      const u=(now-f.t0)/700; if(u>=1) continue;
+      ctx.globalAlpha=1-u*u;
+      ctx.fillText('+1',f.x,f.y-cell*(0.4+u*1.2));
+    }
+    ctx.globalAlpha=1;
+  }
+
+  function updateFx(dt,now){
+    const s=dt/1000;
+    particles=particles.filter(p=>{
+      p.life+=s; if(p.life>=p.dur) return false;
+      p.x+=p.vx*s; p.y+=p.vy*s;
+      const f=Math.pow(0.018,s); p.vx*=f; p.vy*=f;
+      return true;
+    });
+    rings=rings.filter(r=>now-r.t0<450);
+    floats=floats.filter(f=>now-f.t0<700);
+  }
+
+  /* ───────── main loop ───────── */
+  let last=performance.now();
+  function loop(now){
+    requestAnimationFrame(loop);
+    const dt=Math.min(now-last,100); last=now;
+    const iv=state==='menu'?150:interval;
+    if(state==='playing'||state==='menu'){
+      acc+=dt; let guard=0;
+      while(acc>=iv&&guard++<8){
+        acc-=iv; tick();
+        if(state!=='playing'&&state!=='menu') break;
+      }
+    }
+    if(state==='dying'&&now-deathAt>950) finishGameOver();
+    updateFx(dt,now);
+    render(clamp(acc/iv,0,1),now);
+  }
+
+  /* ───────── input ───────── */
+  const KEYMAP={ArrowUp:[0,-1],KeyW:[0,-1],ArrowDown:[0,1],KeyS:[0,1],
+                ArrowLeft:[-1,0],KeyA:[-1,0],ArrowRight:[1,0],KeyD:[1,0]};
+  function pushDir(d){
+    if(dirQueue.length>=3) return;
+    const ref=dirQueue[dirQueue.length-1]||dir;
+    if((d.x===ref.x&&d.y===ref.y)||(d.x===-ref.x&&d.y===-ref.y)) return;
+    dirQueue.push(d);
+  }
+  window.addEventListener('keydown',e=>{
+    if(e.code==='Space'){ e.preventDefault(); action(); return; }
+    const v=KEYMAP[e.code];
+    if(v){
+      e.preventDefault(); ensureAudio();
+      if(state==='menu'||state==='gameover') startGame();
+      else if(state==='paused') resume();
+      pushDir({x:v[0],y:v[1]});
+    }
+  });
+  // touch: swipe to steer, tap to start / pause
+  let ts=null, moved=false;
+  frame.addEventListener('touchstart',e=>{
+    const t=e.touches[0]; ts={x:t.clientX,y:t.clientY}; moved=false;
+  },{passive:true});
+  frame.addEventListener('touchmove',e=>{
+    if(!ts) return; e.preventDefault();
+    const t=e.touches[0];
+    const dx=t.clientX-ts.x, dy=t.clientY-ts.y;
+    if(Math.hypot(dx,dy)>24){
+      const d=Math.abs(dx)>Math.abs(dy)?{x:Math.sign(dx),y:0}:{x:0,y:Math.sign(dy)};
+      if(state==='menu'||state==='gameover') startGame();
+      else if(state==='paused') resume();
+      pushDir(d);
+      ts={x:t.clientX,y:t.clientY}; moved=true;
+    }
+  },{passive:false});
+  frame.addEventListener('touchend',()=>{ if(ts&&!moved) action(); ts=null; });
+
+  // overlays: clicking anywhere acts like space
+  for(const ov of[ovMenu,ovPause,ovOver]){
+    ov.addEventListener('click',e=>{ if(e.target.closest('button')) return; action(); });
+  }
+  $('btnStart').addEventListener('click',()=>{ ensureAudio(); startGame(); });
+  $('btnResume').addEventListener('click',()=>{ ensureAudio(); resume(); });
+  $('btnAgain').addEventListener('click',()=>{ ensureAudio(); startGame(); });
+
+  // be polite: auto-pause when the tab loses attention
+  document.addEventListener('visibilitychange',()=>{ if(document.hidden&&state==='playing') pause(); });
+  window.addEventListener('blur',()=>{ if(state==='playing') pause(); });
+
+  /* ───────── boot: straight into the demo reel ───────── */
+  resetSnake(); spawnApple();
+  bestEl.textContent=pad(best,4);
+  stateTag.textContent='DEMO';
+  showOv(ovMenu);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
